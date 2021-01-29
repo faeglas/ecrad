@@ -128,9 +128,9 @@ contains
     call solver_sw(blk_i, col_i, col_wset_i, end_col, end_col_sw, g_i, input, lvl_i, mp_i, &
                    num_mp, num_thread_blocks_per_mp_sw, r_i, start_col, start_col_sw, t_blk_i, &
                    thread_block_idx_by_mp_sw, working_set_sw)
-    call solver_lw(blk_i, col_i, col_wset_i, end_col, end_col_lw, g_i, input, lvl_i, mp_i, &
-                   num_mp, num_thread_blocks_per_mp_lw, r_i, start_col, start_col_lw, t_blk_i, &
-                   thread_block_idx_by_mp_lw, working_set_lw)
+    ! call solver_lw(blk_i, col_i, col_wset_i, end_col, end_col_lw, g_i, input, lvl_i, mp_i, &
+    !                num_mp, num_thread_blocks_per_mp_lw, r_i, start_col, start_col_lw, t_blk_i, &
+    !                thread_block_idx_by_mp_lw, working_set_lw)
   end subroutine run
 
   subroutine solver_sw(blk_i, col_i, col_wset_i, end_col, end_col_sw, g_i, input, lvl_i, mp_i, &
@@ -152,6 +152,7 @@ contains
       integer :: start_col
       real, allocatable :: start_col_sw(:)
       integer :: t_blk_i
+      integer :: d_i
       real, allocatable :: thread_block_idx_by_mp_sw(:, :)
       real, allocatable :: working_set_sw(:, :, : , :)
       call omp_set_num_threads(num_mp)
@@ -169,41 +170,44 @@ contains
           !write(*,"('   start_col: ',i0)") start_col
           !write(*,"('   end_col:   ',i0)") end_col
           !Input IO
+          !$acc parallel default (present) vector_length(128)
+          !$acc loop seq collapse(2)
           DO col_i = start_col, end_col
             DO lvl_i = 1, NUM_LEVELS
-              !$acc parallel default (present)
-              input(:, lvl_i, col_i) = 1.
-              input(:, lvl_i, col_i) = input(:, lvl_i, col_i) + 2.
-              !$acc end parallel
-            END DO
-          END DO
-          !Computation
-          DO col_i = start_col, end_col
-            col_wset_i = col_i - start_col + 1
-            !print *, shape(working_set_sw)
-            !print *, ' ', col_wset_i
-            DO lvl_i = 1, NUM_LEVELS
-              DO r_i = 1, WORKING_SET_SW_DATA_SIZE_PER_COL
-                ! This should be in parallel
-                !$acc parallel default (present)
-                working_set_sw(:, r_i, lvl_i, t_blk_i) = 1.
-                !$acc loop
-                do g_i = 1, NUM_G_SW
-                  working_set_sw(g_i, r_i, lvl_i, t_blk_i) = exp(working_set_sw(g_i, r_i, lvl_i, t_blk_i))
-                end do
-                !$acc end parallel
+              !$acc loop vector
+              DO d_i = 1, INPUT_DATA_SIZE_PER_COL
+                input(d_i, lvl_i, col_i) = 1.
+                input(d_i, lvl_i, col_i) = input(d_i, lvl_i, col_i) + 2.
               END DO
             END DO
           END DO
-          !Input IO
-          DO col_i = start_col, end_col
-            DO lvl_i = 1, NUM_LEVELS
-              ! This should be in parallel
-              !$acc parallel default (present)
-              input(:, lvl_i, col_i) = input(1:INPUT_DATA_SIZE_PER_COL:-1, lvl_i, col_i)
-              !$acc end parallel
-            END DO
-          END DO
+          !$acc end parallel
+          !Computation
+          ! DO col_i = start_col, end_col
+          !   col_wset_i = col_i - start_col + 1
+          !   !print *, shape(working_set_sw)
+          !   !print *, ' ', col_wset_i
+          !   !$acc parallel default (present) vector_length(128)
+          !   !$acc loop seq collapse(2)
+          !   DO lvl_i = 1, NUM_LEVELS
+          !     DO r_i = 1, WORKING_SET_SW_DATA_SIZE_PER_COL
+          !       ! This should be in parallel
+          !       working_set_sw(:, r_i, lvl_i, t_blk_i) = 1.
+          !       do g_i = 1, NUM_G_SW
+          !         working_set_sw(g_i, r_i, lvl_i, t_blk_i) = exp(working_set_sw(g_i, r_i, lvl_i, t_blk_i))
+          !       end do
+          !     END DO
+          !   END DO
+          ! END DO
+          ! !Input IO
+          ! DO col_i = start_col, end_col
+          !   DO lvl_i = 1, NUM_LEVELS
+          !     ! This should be in parallel
+          !     !$nacc parallel default (present)
+          !     input(:, lvl_i, col_i) = input(1:INPUT_DATA_SIZE_PER_COL:-1, lvl_i, col_i)
+          !     !$nacc end parallel
+          !   END DO
+          ! END DO
         END DO
       END DO
 	    !$omp end parallel do
@@ -248,10 +252,10 @@ contains
           DO col_i = start_col, end_col
             DO lvl_i = 1, NUM_LEVELS
               ! This should be in parallel
-              !$acc parallel default (present)
+              !$nacc parallel default (present)
               input(:, lvl_i, col_i) = 1.
               input(:, lvl_i, col_i) = input(:, lvl_i, col_i) + 2.
-              !$acc end parallel
+              !$nacc end parallel
             END DO
           END DO
           !Computation
@@ -262,13 +266,13 @@ contains
             DO lvl_i = 1, NUM_LEVELS
               DO r_i = 1, WORKING_SET_LW_DATA_SIZE_PER_COL
                 ! This should be in parallel
-                !$acc parallel default (present)
+                !$nacc parallel default (present)
                 working_set_lw(:, r_i, lvl_i, t_blk_i) = 1.
-                !$acc loop
+                !$nacc loop
                 do g_i = 1, NUM_G_LW
                   working_set_lw(g_i, r_i, lvl_i, t_blk_i) = exp(working_set_lw(g_i, r_i, lvl_i, t_blk_i))
                 end do
-                !$acc end parallel
+                !$nacc end parallel
               END DO
             END DO
           END DO
@@ -276,9 +280,9 @@ contains
           DO col_i = start_col, end_col
             DO lvl_i = 1, NUM_LEVELS
               ! This should be in parallel
-              !$acc parallel default(present)
+              !$nacc parallel default(present)
               input(:, lvl_i, col_i) = input(1:INPUT_DATA_SIZE_PER_COL:-1, lvl_i, col_i)
-              !$acc end parallel
+              !$nacc end parallel
             END DO
           END DO
       END DO
